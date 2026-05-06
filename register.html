@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <h1>🏞️ Land Valuation System</h1>
+      <p>Create your account</p>
+    </div>
+    <h2>Register</h2>
+
+    <div id="alertContainer"></div>
+
+    <form id="registerForm">
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="regName" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" required>
+      </div>
+      <div class="form-group">
+        <label>Phone</label>
+        <input type="text" id="regPhone" placeholder="+255 712 345 678" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" required>
+      </div>
+      <div class="form-group">
+        <label>Account Type</label>
+        <select id="regRole" required>
+          <option value="">Choose type...</option>
+          <option value="seller">Seller (list land for sale)</option>
+          <option value="buyer">Buyer (purchase land)</option>
+        </select>
+        <small style="color:#6c757d; font-size:11px; display:block; margin-top:4px;">
+          Authority and Administrator accounts can only be created by an existing Administrator.
+        </small>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">Create Account</button>
+    </form>
+    <div class="auth-switch">
+      Already have an account? <a href="index.html">Log in</a>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+<script>
+  document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alertBox = document.getElementById('alertContainer');
+    const payload = {
+      name:     document.getElementById('regName').value.trim(),
+      email:    document.getElementById('regEmail').value.trim(),
+      phone:    document.getElementById('regPhone').value.trim(),
+      password: document.getElementById('regPassword').value,
+      role:     document.getElementById('regRole').value
+    };
+    const data = await apiPost('register.php', payload);
+    if (data.success) {
+      window.location.href = 'dashboard.html';
+    } else {
+      showAlert(alertBox, 'error', data.message || 'Registration failed.');
+    }
+  });
+</script>
+</body>
+</html>

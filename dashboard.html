@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'dashboard.html', 'Dashboard');
+  attachLogoutHandler();
+
+  const content = document.getElementById('pageContent');
+
+  // Fetch stats and lands
+  const [statsRes, landsRes] = await Promise.all([
+    apiGet('get_stats.php'),
+    apiGet('get_lands.php')
+  ]);
+  const stats = statsRes.stats || {};
+  const lands = landsRes.lands || [];
+
+  if (user.role === 'seller')    content.innerHTML = renderSellerDash(user, stats, lands);
+  if (user.role === 'buyer')     content.innerHTML = renderBuyerDash(user, stats, lands);
+  if (user.role === 'authority') content.innerHTML = renderAuthorityDash(user, stats, lands);
+  if (user.role === 'admin')     content.innerHTML = renderAdminDash(user, stats, lands);
+})();
+
+function landCardHtml(l) {
+  return `
+    <a href="land_details.html?id=${l.id}" class="land-card">
+      <div class="land-card-image">${landIcon(l.type)}</div>
+      <div class="land-card-body">
+        <h3>${escape(l.title)}</h3>
+        <div class="loc">📍 ${escape(l.location)}</div>
+        <div class="meta">
+          <span>${l.area} m²</span>
+          <span class="badge badge-${l.status}">${statusText(l.status)}</span>
+        </div>
+        <div class="price">${l.valuation_amount ? fmt(l.valuation_amount) : 'Not valued yet'}</div>
+      </div>
+    </a>
+  `;
+}
+
+function renderSellerDash(user, stats, lands) {
+  return `
+    <div class="page-header">
+      <h1>Welcome, ${escape(user.name)} 👋</h1>
+      <p>Here is an overview of your listed lands.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Total Lands</div><div class="value">${stats.total || 0}</div></div>
+      <div class="stat-card gold"><div class="label">Pending Valuation</div><div class="value">${stats.pending || 0}</div></div>
+      <div class="stat-card green"><div class="label">Valued</div><div class="value">${stats.valued || 0}</div></div>
+      <div class="stat-card red"><div class="label">Sold</div><div class="value">${stats.sold || 0}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">Portfolio Value (Valued Lands)</h3>
+      <div class="valuation-box">
+        <div class="label">Total Valued Amount</div>
+        <div class="value">${fmt(stats.total_value || 0)}</div>
+        <div class="note">Based on ${stats.valued || 0} valued land(s)</div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">Your Recent Lands</h3>
+      ${lands.length === 0
+        ? '<p class="text-muted">You have not added any lands yet. Click <strong>Add Land</strong> in the sidebar to get started.</p>'
+        : `<div class="land-grid">${lands.slice(0, 4).map(landCardHtml).join('')}</div>`}
+    </div>
+  `;
+}
+
+function renderBuyerDash(user, stats, lands) {
+  return `
+    <div class="page-header">
+      <h1>Welcome, ${escape(user.name)} 👋</h1>
+      <p>Browse valued lands available for purchase.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Available Lands</div><div class="value">${stats.available || 0}</div></div>
+      <div class="stat-card green"><div class="label">My Purchases</div><div class="value">${stats.purchases || 0}</div></div>
+      <div class="stat-card gold"><div class="label">Total Spent</div><div class="value" style="font-size:20px;">${fmt(stats.spent || 0)}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">Featured Lands</h3>
+      ${lands.length === 0
+        ? '<p class="text-muted">No lands available right now.</p>'
+        : `<div class="land-grid">${lands.slice(0, 6).map(landCardHtml).join('')}</div>`}
+    </div>
+  `;
+}
+
+function renderAuthorityDash(user, stats, lands) {
+  const pending = lands.filter(l => l.status === 'pending');
+  return `
+    <div class="page-header">
+      <h1>Authority Dashboard</h1>
+      <p>Review pending lands and perform valuations.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card gold"><div class="label">Pending Valuations</div><div class="value">${stats.pending || 0}</div></div>
+      <div class="stat-card green"><div class="label">Completed Valuations</div><div class="value">${stats.valued || 0}</div></div>
+      <div class="stat-card"><div class="label">Total Valued Amount</div><div class="value" style="font-size:20px;">${fmt(stats.total_val || 0)}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">Pending Valuations</h3>
+      ${pending.length === 0 ? '<p class="text-muted">No lands awaiting valuation.</p>' : `
+        <table>
+          <thead><tr><th>Plot #</th><th>Title</th><th>Location</th><th>Type</th><th>Area</th><th>Action</th></tr></thead>
+          <tbody>
+            ${pending.map(l => `
+              <tr>
+                <td>${escape(l.plot_number)}</td>
+                <td>${escape(l.title)}</td>
+                <td>${escape(l.location)}</td>
+                <td>${roleLabel(l.type)}</td>
+                <td>${l.area} m²</td>
+                <td><a href="valuation.html?id=${l.id}" class="btn btn-primary btn-sm">Value Now</a></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function renderAdminDash(user, stats, lands) {
+  const recent = lands.slice(0, 5);
+  return `
+    <div class="page-header">
+      <h1>Administrator Dashboard</h1>
+      <p>System-wide overview and management.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Total Users</div>
+        <div class="value">${stats.users || 0}</div>
+        <div class="sub">${stats.sellers || 0} sellers · ${stats.buyers || 0} buyers · ${stats.authorities || 0} authorities</div>
+      </div>
+      <div class="stat-card green"><div class="label">Total Lands</div><div class="value">${stats.lands || 0}</div></div>
+      <div class="stat-card gold"><div class="label">Transactions</div><div class="value">${stats.transactions || 0}</div></div>
+      <div class="stat-card red"><div class="label">Total Revenue</div><div class="value" style="font-size:20px;">${fmt(stats.revenue || 0)}</div></div>
+    </div>
+    <div class="detail-grid">
+      <div class="card">
+        <h3 class="section-title">Recent Lands</h3>
+        ${recent.length === 0 ? '<p class="text-muted">No lands yet.</p>' : `
+          <table>
+            <thead><tr><th>Plot #</th><th>Title</th><th>Status</th></tr></thead>
+            <tbody>
+              ${recent.map(l => `
+                <tr>
+                  <td>${escape(l.plot_number)}</td>
+                  <td>${escape(l.title)}</td>
+                  <td><span class="badge badge-${l.status}">${roleLabel(l.status)}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `}
+      </div>
+      <div class="card">
+        <h3 class="section-title">Quick Actions</h3>
+        <a href="users.html" class="btn btn-primary btn-block mb-10">👥 Manage Users</a>
+        <a href="land_list.html" class="btn btn-secondary btn-block mb-10">🗺️ View All Lands</a>
+        <a href="payment.html" class="btn btn-secondary btn-block mb-10">💳 View Transactions</a>
+        <a href="reports.html" class="btn btn-secondary btn-block">📈 System Reports</a>
+      </div>
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>

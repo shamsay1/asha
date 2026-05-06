@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Users — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+<div id="modalLayer"></div>
+
+<script src="js/app.js"></script>
+<script>
+let currentUser;
+
+(async () => {
+  currentUser = await requireAuth(['admin']);
+  if (!currentUser) return;
+
+  document.getElementById('app').innerHTML = renderLayout(currentUser, 'users.html', 'Manage Users');
+  attachLogoutHandler();
+
+  await renderUserList();
+})();
+
+async function renderUserList() {
+  const content = document.getElementById('pageContent');
+  content.innerHTML = `
+    <div class="page-header flex-between">
+      <div>
+        <h1>Manage Users</h1>
+        <p>View, add, or remove user accounts. Only admins can create Authority and Admin accounts.</p>
+      </div>
+      <button class="btn btn-primary" id="addUserBtn">➕ Add New User</button>
+    </div>
+    <div id="alertContainer"></div>
+    <div class="card" id="usersContainer"><p class="text-muted">Loading...</p></div>
+  `;
+
+  document.getElementById('addUserBtn').addEventListener('click', showAddUserModal);
+
+  const data = await apiGet('manage_users.php');
+  const users = data.users || [];
+  const c = document.getElementById('usersContainer');
+
+  c.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Created</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        ${users.map(u => `
+          <tr>
+            <td>${escape(u.name)}</td>
+            <td>${escape(u.email)}</td>
+            <td>${escape(u.phone)}</td>
+            <td><span class="badge badge-${u.role}">${roleLabel(u.role)}</span></td>
+            <td>${escape(u.created_at)}</td>
+            <td>
+              ${parseInt(u.id) === parseInt(currentUser.id)
+                ? '<span class="text-muted" style="font-size:11px;">(you)</span>'
+                : `<button class="btn btn-danger btn-sm" data-delete="${u.id}" data-name="${escape(u.name)}" data-role="${escape(u.role)}" data-email="${escape(u.email)}">Delete</button>`}
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+
+  document.querySelectorAll('[data-delete]').forEach(el => {
+    el.addEventListener('click', () => {
+      showDeleteModal({
+        id: el.dataset.delete,
+        name: el.dataset.name,
+        role: el.dataset.role,
+        email: el.dataset.email
+      });
+    });
+  });
+}
+
+function showAddUserModal() {
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal">
+        <h2>Add New User</h2>
+        <form id="addUserForm">
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="auName" required>
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="auEmail" required>
+          </div>
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" id="auPhone" placeholder="+255 712 345 678" required>
+          </div>
+          <div class="form-group">
+            <label>Initial Password</label>
+            <input type="text" id="auPassword" value="changeme123" required>
+            <small style="color:#6c757d; font-size:11px;">User can change after first login.</small>
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select id="auRole" required>
+              <option value="seller">Seller</option>
+              <option value="buyer">Buyer</option>
+              <option value="authority">Authority (valuation officer)</option>
+              <option value="admin">Administrator</option>
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="modalClose">Cancel</button>
+            <button type="submit" class="btn btn-primary">Create User</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalClose').addEventListener('click', () => {
+    document.getElementById('modalLayer').innerHTML = '';
+  });
+
+  document.getElementById('addUserForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      action:   'add',
+      name:     document.getElementById('auName').value.trim(),
+      email:    document.getElementById('auEmail').value.trim(),
+      phone:    document.getElementById('auPhone').value.trim(),
+      password: document.getElementById('auPassword').value,
+      role:     document.getElementById('auRole').value
+    };
+    const data = await apiPost('manage_users.php', payload);
+    if (data.success) {
+      document.getElementById('modalLayer').innerHTML = '';
+      await renderUserList();
+    } else {
+      alert(data.message || 'Failed to add user.');
+    }
+  });
+}
+
+function showDeleteModal(user) {
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal">
+        <h2>Confirm Deletion</h2>
+        <p>Are you sure you want to delete the account for:</p>
+        <div class="card mt-10">
+          <strong>${escape(user.name)}</strong> (${roleLabel(user.role)})<br>
+          <span class="text-muted">${escape(user.email)}</span>
+        </div>
+        <div class="alert alert-error mt-10">This action cannot be undone.</div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" id="modalClose">Cancel</button>
+          <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete User</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('modalClose').addEventListener('click', () => {
+    document.getElementById('modalLayer').innerHTML = '';
+  });
+
+  document.getElementById('confirmDeleteBtn').addEventListener('click', async () => {
+    const data = await apiPost('manage_users.php', { action: 'delete', id: parseInt(user.id) });
+    if (data.success) {
+      document.getElementById('modalLayer').innerHTML = '';
+      await renderUserList();
+    } else {
+      alert(data.message || 'Failed to delete user.');
+    }
+  });
+}
+</script>
+
+</body>
+</html>

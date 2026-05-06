@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reports — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth(['seller','authority','admin']);
+  if (!user) return;
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'reports.html', 'Reports');
+  attachLogoutHandler();
+
+  const content = document.getElementById('pageContent');
+  content.innerHTML = '<p class="text-muted">Loading...</p>';
+
+  const [statsRes, landsRes, paymentsRes] = await Promise.all([
+    apiGet('get_stats.php'),
+    apiGet('get_lands.php'),
+    apiGet('get_payments.php')
+  ]);
+  const stats = statsRes.stats || {};
+  const lands = landsRes.lands || [];
+  const payments = paymentsRes.payments || [];
+
+  if (user.role === 'seller')    content.innerHTML = sellerReport(stats, lands);
+  if (user.role === 'authority') content.innerHTML = authorityReport(stats, lands);
+  if (user.role === 'admin')     content.innerHTML = adminReport(stats, lands, payments);
+})();
+
+function sellerReport(stats, lands) {
+  return `
+    <div class="page-header">
+      <h1>My Seller Report</h1>
+      <p>Summary of your land listings and sales.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Total Listings</div><div class="value">${stats.total || 0}</div></div>
+      <div class="stat-card green"><div class="label">Sold</div><div class="value">${stats.sold || 0}</div></div>
+      <div class="stat-card gold"><div class="label">Revenue Earned</div><div class="value" style="font-size:20px;">${fmt(stats.revenue || 0)}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">All My Lands</h3>
+      ${lands.length === 0 ? '<p class="text-muted">No lands.</p>' : `
+        <table>
+          <thead><tr><th>Plot #</th><th>Title</th><th>Type</th><th>Area</th><th>Valuation</th><th>Status</th></tr></thead>
+          <tbody>
+            ${lands.map(l => `
+              <tr>
+                <td>${escape(l.plot_number)}</td>
+                <td>${escape(l.title)}</td>
+                <td>${roleLabel(l.type)}</td>
+                <td>${l.area} m²</td>
+                <td>${l.valuation_amount ? fmt(l.valuation_amount) : '—'}</td>
+                <td><span class="badge badge-${l.status}">${roleLabel(l.status)}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function authorityReport(stats, lands) {
+  const valued = lands.filter(l => l.valuation_amount);
+  const totalValue = valued.reduce((s, l) => s + parseFloat(l.valuation_amount), 0);
+  const avg = valued.length ? Math.round(totalValue / valued.length) : 0;
+
+  return `
+    <div class="page-header">
+      <h1>Authority Report</h1>
+      <p>Overview of all valuations carried out.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Total Valuations</div><div class="value">${valued.length}</div></div>
+      <div class="stat-card green"><div class="label">Total Valued</div><div class="value" style="font-size:20px;">${fmt(totalValue)}</div></div>
+      <div class="stat-card gold"><div class="label">Average Value</div><div class="value" style="font-size:20px;">${fmt(avg)}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">All Valued Lands</h3>
+      ${valued.length === 0 ? '<p class="text-muted">No valued lands yet.</p>' : `
+        <table>
+          <thead><tr><th>Plot #</th><th>Title</th><th>Zone</th><th>Type</th><th>Area</th><th>Value</th><th>Valued By</th></tr></thead>
+          <tbody>
+            ${valued.map(l => `
+              <tr>
+                <td>${escape(l.plot_number)}</td>
+                <td>${escape(l.title)}</td>
+                <td>${roleLabel(l.zone)}</td>
+                <td>${roleLabel(l.type)}</td>
+                <td>${l.area} m²</td>
+                <td>${fmt(l.valuation_amount)}</td>
+                <td>${escape(l.valued_by || '—')}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+function adminReport(stats, lands, payments) {
+  return `
+    <div class="page-header">
+      <h1>System Report</h1>
+      <p>Complete system-wide statistics.</p>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card"><div class="label">Users</div><div class="value">${stats.users || 0}</div></div>
+      <div class="stat-card green"><div class="label">Lands</div><div class="value">${stats.lands || 0}</div></div>
+      <div class="stat-card gold"><div class="label">Transactions</div><div class="value">${stats.transactions || 0}</div></div>
+      <div class="stat-card red"><div class="label">Total Revenue</div><div class="value" style="font-size:20px;">${fmt(stats.revenue || 0)}</div></div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">Lands by Status</h3>
+      <div class="stats-grid">
+        <div class="stat-card gold"><div class="label">Pending</div><div class="value">${stats.pending || 0}</div></div>
+        <div class="stat-card green"><div class="label">Valued (For Sale)</div><div class="value">${stats.valued || 0}</div></div>
+        <div class="stat-card red"><div class="label">Sold</div><div class="value">${stats.sold || 0}</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3 class="section-title">All Lands Overview</h3>
+      ${lands.length === 0 ? '<p class="text-muted">No lands.</p>' : `
+        <table>
+          <thead><tr><th>Plot #</th><th>Title</th><th>Seller</th><th>Value</th><th>Status</th></tr></thead>
+          <tbody>
+            ${lands.map(l => `
+              <tr>
+                <td>${escape(l.plot_number)}</td>
+                <td>${escape(l.title)}</td>
+                <td>${escape(l.seller_name || 'Unknown')}</td>
+                <td>${l.valuation_amount ? fmt(l.valuation_amount) : '—'}</td>
+                <td><span class="badge badge-${l.status}">${roleLabel(l.status)}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>

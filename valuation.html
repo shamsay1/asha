@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Valuation — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth(['authority']);
+  if (!user) return;
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'valuation.html', 'Valuation');
+  attachLogoutHandler();
+
+  const params = new URLSearchParams(window.location.search);
+  const landId = params.get('id');
+  const content = document.getElementById('pageContent');
+
+  if (landId) {
+    await renderValuationForm(landId);
+  } else {
+    await renderPendingList();
+  }
+
+  async function renderPendingList() {
+    content.innerHTML = `
+      <div class="page-header">
+        <h1>Pending Valuations</h1>
+        <p>Select a land to perform valuation.</p>
+      </div>
+      <div class="card" id="listContainer"><p class="text-muted">Loading...</p></div>
+    `;
+
+    const data = await apiGet('get_lands.php');
+    const pending = (data.lands || []).filter(l => l.status === 'pending');
+    const container = document.getElementById('listContainer');
+
+    if (pending.length === 0) {
+      container.innerHTML = '<p class="text-muted">No pending valuations.</p>';
+      return;
+    }
+    container.innerHTML = `
+      <table>
+        <thead><tr><th>Plot #</th><th>Title</th><th>Location</th><th>Zone</th><th>Type</th><th>Area</th><th>Action</th></tr></thead>
+        <tbody>
+          ${pending.map(l => `
+            <tr>
+              <td>${escape(l.plot_number)}</td>
+              <td>${escape(l.title)}</td>
+              <td>${escape(l.location)}</td>
+              <td>${roleLabel(l.zone)}</td>
+              <td>${roleLabel(l.type)}</td>
+              <td>${l.area} m²</td>
+              <td><a href="valuation.html?id=${l.id}" class="btn btn-primary btn-sm">Value</a></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  async function renderValuationForm(id) {
+    content.innerHTML = '<p class="text-muted">Loading...</p>';
+
+    const [landRes, valRes] = await Promise.all([
+      apiGet('get_lands.php?id=' + encodeURIComponent(id)),
+      apiPost('valuation.php', { action: 'preview', land_id: parseInt(id) })
+    ]);
+
+    if (!landRes.success || !valRes.success) {
+      content.innerHTML = `<div class="card">Could not load land or valuation. <a href="valuation.html" class="btn btn-secondary">Back</a></div>`;
+      return;
+    }
+
+    const land = landRes.land;
+    const v = valRes.valuation;
+
+    const locFactorsHtml = (v.locationFactors || []).map(f =>
+      `<div class="breakdown-row"><span>${escape(f.label)}</span><span class="mult">× ${f.mult}</span></div>`
+    ).join('');
+
+    const typeSpecific = land.type === 'agricultural'
+      ? `<div class="detail-row"><span class="key">Soil</span><span class="val">${SOIL_LABEL[land.soil_quality] || '—'}</span></div>
+         <div class="detail-row"><span class="key">Water</span><span class="val">${WATER_LABEL[land.water_source] || '—'}</span></div>`
+      : `<div class="detail-row"><span class="key">Distance</span><span class="val">${DIST_LABEL[land.distance_to_center] || '—'}</span></div>`;
+
+    content.innerHTML = `
+      <div class="page-header">
+        <a href="valuation.html" class="btn btn-secondary mb-10">← Back</a>
+        <h1>Perform Valuation</h1>
+        <p>Review the calculated value, then confirm to publish it.</p>
+      </div>
+      <div id="alertContainer"></div>
+      <div class="detail-grid">
+        <div class="card">
+          <h3 class="section-title">Land Under Review</h3>
+          <div class="detail-row"><span class="key">Title</span><span class="val">${escape(land.title)}</span></div>
+          <div class="detail-row"><span class="key">Plot #</span><span class="val">${escape(land.plot_number)}</span></div>
+          <div class="detail-row"><span class="key">Location</span><span class="val">${escape(land.location)}</span></div>
+          <div class="detail-row"><span class="key">Zone</span><span class="val">${roleLabel(land.zone)}</span></div>
+          <div class="detail-row"><span class="key">Type</span><span class="val">${roleLabel(land.type)}</span></div>
+          <div class="detail-row"><span class="key">Area</span><span class="val">${land.area} m²</span></div>
+          <div class="detail-row"><span class="key">Road Access</span><span class="val">${ROAD_LABEL[land.road_access] || '—'}</span></div>
+          ${typeSpecific}
+          <div class="detail-row"><span class="key">Utilities</span><span class="val">${[land.has_electricity, land.has_water, land.has_road, land.has_sewage].filter(x => parseInt(x)).length} / 4</span></div>
+        </div>
+        <div class="card">
+          <h3 class="section-title">Calculated Valuation</h3>
+          <div class="valuation-box">
+            <div class="label">Suggested Value</div>
+            <div class="value">${fmt(v.total)}</div>
+          </div>
+          <div class="breakdown">
+            <div class="breakdown-row"><span>Zone rate × Area</span><span>${fmt(v.base)}</span></div>
+            <div class="breakdown-row"><span>${roleLabel(land.type)} type</span><span class="mult">× ${v.typeMultiplier}</span></div>
+            <div class="breakdown-row"><span>${escape(ROAD_LABEL[land.road_access] || '')}</span><span class="mult">× ${v.roadMultiplier}</span></div>
+            ${locFactorsHtml}
+            <div class="breakdown-row"><span>+ ${v.utilityCount} utilities (${(v.utilityBonus*100).toFixed(0)}%)</span><span>+ ${fmt(v.utilityAmount)}</span></div>
+            <div class="breakdown-row total"><span>Total</span><span>${fmt(v.total)}</span></div>
+          </div>
+          <button class="btn btn-success btn-block mt-20" id="confirmBtn">Confirm Valuation</button>
+        </div>
+      </div>
+    `;
+
+    document.getElementById('confirmBtn').addEventListener('click', async () => {
+      const data = await apiPost('valuation.php', { action: 'confirm', land_id: parseInt(id) });
+      if (data.success) {
+        alert('Valuation confirmed for "' + land.title + '".');
+        window.location.href = 'valuation.html';
+      } else {
+        showAlert(document.getElementById('alertContainer'), 'error', data.message || 'Failed to confirm.');
+      }
+    });
+  }
+})();
+</script>
+
+</body>
+</html>

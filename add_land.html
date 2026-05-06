@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Add Land — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth(['seller']);
+  if (!user) return;
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'add_land.html', 'Add New Land');
+  attachLogoutHandler();
+
+  const content = document.getElementById('pageContent');
+  content.innerHTML = `
+    <div class="page-header">
+      <h1>Add New Land</h1>
+      <p>Provide accurate details — they directly affect the valuation calculated by the Authority.</p>
+    </div>
+    <div id="alertContainer"></div>
+    <div class="card">
+      <form id="addLandForm">
+        <div class="form-group">
+          <label>Land Title</label>
+          <input type="text" id="alTitle" placeholder="e.g. Residential Plot near Stone Town" required>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Plot Number</label>
+            <input type="text" id="alPlot" placeholder="ZNZ/XXX/0000" required>
+          </div>
+          <div class="form-group">
+            <label>Location (area / district)</label>
+            <input type="text" id="alLocation" placeholder="e.g. Stone Town, Zanzibar" required>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Zone</label>
+            <select id="alZone" required>
+              <option value="urban">Urban (town)</option>
+              <option value="suburban">Suburban</option>
+              <option value="rural">Rural / village</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Land Type</label>
+            <select id="alType" required>
+              <option value="residential">Residential (house plot)</option>
+              <option value="commercial">Commercial (business)</option>
+              <option value="agricultural">Agricultural (farm)</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Area (square meters)</label>
+            <input type="number" id="alArea" min="1" step="0.01" required>
+          </div>
+          <div class="form-group">
+            <label>Road Access</label>
+            <select id="alRoadAccess" required>
+              <option value="main">Main road frontage</option>
+              <option value="side">Side road access</option>
+              <option value="interior">Interior (no direct road)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="resCommFields">
+          <div class="form-group">
+            <label>Distance to City Center / Market</label>
+            <select id="alDistance">
+              <option value="near">Near (under 2 km)</option>
+              <option value="moderate">Moderate (2–10 km)</option>
+              <option value="far">Far (over 10 km)</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="agriFields" style="display:none;">
+          <div class="grid-2">
+            <div class="form-group">
+              <label>Soil Quality</label>
+              <select id="alSoil">
+                <option value="fertile">Fertile</option>
+                <option value="moderate">Moderate</option>
+                <option value="poor">Poor</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Water Source</label>
+              <select id="alWaterSource">
+                <option value="river">River / lake nearby</option>
+                <option value="well">Well / borehole</option>
+                <option value="none">No water source</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Description</label>
+          <textarea id="alDesc" rows="3" placeholder="Brief description of the land"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Available Utilities (tick what applies)</label>
+          <div style="display:flex; flex-wrap:wrap; gap:15px; margin-top:6px;">
+            <label><input type="checkbox" id="alElectricity"> Electricity</label>
+            <label><input type="checkbox" id="alWater"> Water</label>
+            <label><input type="checkbox" id="alRoad"> Road access</label>
+            <label><input type="checkbox" id="alSewage"> Sewage</label>
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary">Submit for Valuation</button>
+      </form>
+    </div>
+  `;
+
+  // Toggle type-specific fields
+  const typeSel = document.getElementById('alType');
+  const toggleFields = () => {
+    const isAgri = typeSel.value === 'agricultural';
+    document.getElementById('resCommFields').style.display = isAgri ? 'none' : '';
+    document.getElementById('agriFields').style.display    = isAgri ? '' : 'none';
+  };
+  typeSel.addEventListener('change', toggleFields);
+  toggleFields();
+
+  document.getElementById('addLandForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const alertBox = document.getElementById('alertContainer');
+    const type = typeSel.value;
+    const payload = {
+      title:       document.getElementById('alTitle').value.trim(),
+      plotNumber:  document.getElementById('alPlot').value.trim(),
+      location:    document.getElementById('alLocation').value.trim(),
+      zone:        document.getElementById('alZone').value,
+      type,
+      area:        parseFloat(document.getElementById('alArea').value),
+      roadAccess:  document.getElementById('alRoadAccess').value,
+      description: document.getElementById('alDesc').value.trim(),
+      utilities: {
+        electricity: document.getElementById('alElectricity').checked,
+        water:       document.getElementById('alWater').checked,
+        road:        document.getElementById('alRoad').checked,
+        sewage:      document.getElementById('alSewage').checked
+      }
+    };
+    if (type === 'agricultural') {
+      payload.soilQuality = document.getElementById('alSoil').value;
+      payload.waterSource = document.getElementById('alWaterSource').value;
+    } else {
+      payload.distanceToCenter = document.getElementById('alDistance').value;
+    }
+
+    const data = await apiPost('add_land.php', payload);
+    if (data.success) {
+      window.location.href = 'land_list.html';
+    } else {
+      showAlert(alertBox, 'error', data.message || 'Failed to add land.');
+    }
+  });
+})();
+</script>
+
+</body>
+</html>

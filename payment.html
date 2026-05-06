@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+<div id="modalLayer"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  const isAdmin = user.role === 'admin';
+  const pageTitle = isAdmin ? 'Transactions' : 'Payments';
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'payment.html', pageTitle);
+  attachLogoutHandler();
+
+  const params = new URLSearchParams(window.location.search);
+  const landId = params.get('land_id');
+  const content = document.getElementById('pageContent');
+
+  // Admin view - all transactions
+  if (isAdmin) {
+    return renderAdminTransactions();
+  }
+
+  if (user.role !== 'buyer') {
+    content.innerHTML = '<div class="card"><p class="text-muted">Only buyers can access the payment page.</p></div>';
+    return;
+  }
+
+  // Buyer flow
+  if (landId) {
+    return renderPaymentForm(landId);
+  }
+  return renderPurchaseHistory();
+
+  /* ---------------- Admin: all transactions ---------------- */
+  async function renderAdminTransactions() {
+    content.innerHTML = `
+      <div class="page-header">
+        <h1>All Transactions</h1>
+        <p>System-wide payment records.</p>
+      </div>
+      <div class="card" id="txnContainer"><p class="text-muted">Loading...</p></div>
+    `;
+    const data = await apiGet('get_payments.php');
+    const payments = data.payments || [];
+    const c = document.getElementById('txnContainer');
+    if (payments.length === 0) {
+      c.innerHTML = '<p class="text-muted">No transactions yet.</p>';
+      return;
+    }
+    c.innerHTML = `
+      <table>
+        <thead><tr><th>Receipt</th><th>Transaction ID</th><th>Land</th><th>Buyer</th><th>Amount</th><th>Method</th><th>Confirmation</th><th>Date</th></tr></thead>
+        <tbody>
+          ${payments.map(p => `
+            <tr>
+              <td>RCT-${String(p.id).padStart(4,'0')}</td>
+              <td style="font-family:monospace; font-size:11px;">${escape(p.transaction_id)}</td>
+              <td>${escape(p.land_title || '—')}</td>
+              <td>${escape(p.buyer_name || '—')}</td>
+              <td>${fmt(p.amount)}</td>
+              <td>${methodLabel(p.method)}</td>
+              <td style="font-family:monospace;">${escape(p.confirmation_code)}</td>
+              <td>${escape(p.payment_date)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  /* ---------------- Buyer: payment form ---------------- */
+  async function renderPaymentForm(id) {
+    content.innerHTML = '<p class="text-muted">Loading...</p>';
+
+    const data = await apiGet('get_lands.php?id=' + encodeURIComponent(id));
+    if (!data.success) {
+      content.innerHTML = '<div class="card">Land not found.</div>';
+      return;
+    }
+    const land = data.land;
+    if (land.status === 'sold') {
+      content.innerHTML = '<div class="card"><div class="alert alert-info">This land has already been sold.</div></div>';
+      return;
+    }
+    if (!land.valuation_amount) {
+      content.innerHTML = '<div class="card"><div class="alert alert-info">This land has no valuation yet.</div></div>';
+      return;
+    }
+
+    content.innerHTML = `
+      <div class="page-header">
+        <a href="land_list.html" class="btn btn-secondary mb-10">← Back</a>
+        <h1>Complete Purchase</h1>
+        <p>Review the order and choose your payment method.</p>
+      </div>
+      <div id="alertContainer"></div>
+      <div class="detail-grid">
+        <div class="card">
+          <h3 class="section-title">Order Summary</h3>
+          <div class="detail-row"><span class="key">Land</span><span class="val">${escape(land.title)}</span></div>
+          <div class="detail-row"><span class="key">Plot #</span><span class="val">${escape(land.plot_number)}</span></div>
+          <div class="detail-row"><span class="key">Location</span><span class="val">${escape(land.location)}</span></div>
+          <div class="detail-row"><span class="key">Area</span><span class="val">${land.area} m²</span></div>
+          <div class="valuation-box mt-20">
+            <div class="label">Amount Due</div>
+            <div class="value">${fmt(land.valuation_amount)}</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 class="section-title">Payment Method</h3>
+          <form id="payForm">
+            <div class="form-group">
+              <label>Method</label>
+              <select id="payMethod" required>
+                <option value="mpesa">M-Pesa</option>
+                <option value="tigopesa">Tigo Pesa</option>
+                <option value="airtelmoney">Airtel Money</option>
+                <option value="bank">Bank Transfer</option>
+                <option value="card">Credit / Debit Card</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label id="payRefLabel">Phone Number</label>
+              <input type="text" id="payRef" placeholder="+255 712 345 678" required>
+            </div>
+            <div class="alert alert-info" style="font-size:12px;">
+              💡 <strong>Simulation mode:</strong> No real money will be charged. The system will generate a transaction ID and confirmation code just like a real payment gateway would.
+            </div>
+            <button type="submit" class="btn btn-success btn-block">Pay ${fmt(land.valuation_amount)}</button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const methodSel = document.getElementById('payMethod');
+    const refLabel  = document.getElementById('payRefLabel');
+    const refInput  = document.getElementById('payRef');
+    methodSel.addEventListener('change', () => {
+      const m = methodSel.value;
+      if (m === 'bank')      { refLabel.textContent = 'Bank Account Number'; refInput.placeholder = 'e.g. 0123456789012'; }
+      else if (m === 'card') { refLabel.textContent = 'Card Number (last 4 digits)'; refInput.placeholder = 'e.g. 1234'; }
+      else                   { refLabel.textContent = 'Phone Number'; refInput.placeholder = '+255 712 345 678'; }
+    });
+
+    document.getElementById('payForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      // Show processing modal
+      document.getElementById('modalLayer').innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal text-center">
+            <div class="spinner"></div>
+            <h2>Processing Payment...</h2>
+            <p class="text-muted">Connecting to payment gateway, please wait.</p>
+          </div>
+        </div>
+      `;
+
+      const data = await apiPost('process_payment.php', {
+        land_id:   parseInt(id),
+        method:    methodSel.value,
+        reference: refInput.value.trim()
+      });
+
+      // Hide processing
+      document.getElementById('modalLayer').innerHTML = '';
+
+      if (!data.success) {
+        showAlert(document.getElementById('alertContainer'), 'error', data.message || 'Payment failed.');
+        return;
+      }
+
+      // Show success modal with receipt
+      const p = data.payment;
+      document.getElementById('modalLayer').innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal">
+            <div class="text-center">
+              <div class="success-icon">✓</div>
+              <h2>Payment Successful!</h2>
+              <p class="text-muted mb-20">Your transaction has been completed.</p>
+            </div>
+            <div class="receipt">
+              <div class="receipt-header">
+                <h3>🏞️ Land Valuation System</h3>
+                <p>Official Payment Receipt</p>
+              </div>
+              <div class="receipt-row"><span class="key">Receipt #</span><span class="val">RCT-${String(p.id).padStart(4,'0')}</span></div>
+              <div class="receipt-row"><span class="key">Transaction ID</span><span class="val">${escape(p.transaction_id)}</span></div>
+              <div class="receipt-row"><span class="key">Confirmation Code</span><span class="val">${escape(p.confirmation_code)}</span></div>
+              <div class="receipt-row"><span class="key">Date & Time</span><span class="val">${escape(p.date_time)}</span></div>
+              <div class="receipt-row"><span class="key">Method</span><span class="val">${methodLabel(p.method)}</span></div>
+              <div class="receipt-row"><span class="key">Reference</span><span class="val">${escape(p.reference)}</span></div>
+              <div class="receipt-row"><span class="key">Status</span><span class="val" style="color:#2d5f3f;">SUCCESSFUL ✓</span></div>
+              <div style="margin-top:12px; padding-top:10px; border-top:1px dashed #ccd2db;">
+                <div class="receipt-row"><span class="key">Property</span><span class="val">${escape(land.title)}</span></div>
+                <div class="receipt-row"><span class="key">Plot #</span><span class="val">${escape(land.plot_number)}</span></div>
+                <div class="receipt-row"><span class="key">Location</span><span class="val">${escape(land.location)}</span></div>
+              </div>
+              <div class="receipt-row receipt-total">
+                <span class="key">TOTAL PAID</span>
+                <span class="val" style="color:#2d5f3f;">${fmt(p.amount)}</span>
+              </div>
+            </div>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" id="modalClose">Done</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById('modalClose').addEventListener('click', () => {
+        window.location.href = 'payment.html';
+      });
+    });
+  }
+
+  /* ---------------- Buyer: purchase history ---------------- */
+  async function renderPurchaseHistory() {
+    content.innerHTML = `
+      <div class="page-header">
+        <h1>My Purchases</h1>
+        <p>Record of lands you have purchased through the system.</p>
+      </div>
+      <div class="card" id="historyContainer"><p class="text-muted">Loading...</p></div>
+    `;
+    const data = await apiGet('get_payments.php');
+    const myPayments = data.payments || [];
+    const c = document.getElementById('historyContainer');
+    if (myPayments.length === 0) {
+      c.innerHTML = '<p class="text-muted">You have not made any purchases yet. Go to "Browse Lands" to find one.</p>';
+      return;
+    }
+    c.innerHTML = `
+      <table>
+        <thead><tr><th>Receipt #</th><th>Transaction ID</th><th>Land</th><th>Amount</th><th>Method</th><th>Confirmation</th><th>Date</th></tr></thead>
+        <tbody>
+          ${myPayments.map(p => `
+            <tr>
+              <td>RCT-${String(p.id).padStart(4,'0')}</td>
+              <td style="font-family:monospace; font-size:11px;">${escape(p.transaction_id)}</td>
+              <td>${escape(p.land_title || 'Unknown')}</td>
+              <td>${fmt(p.amount)}</td>
+              <td>${methodLabel(p.method)}</td>
+              <td style="font-family:monospace;">${escape(p.confirmation_code)}</td>
+              <td>${escape(p.payment_date)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+})();
+</script>
+
+</body>
+</html>

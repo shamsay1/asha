@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Land Details — Land Valuation System</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app"></div>
+
+<script src="js/app.js"></script>
+<script>
+(async () => {
+  const user = await requireAuth();
+  if (!user) return;
+
+  const params = new URLSearchParams(window.location.search);
+  const landId = params.get('id');
+  if (!landId) {
+    window.location.href = 'land_list.html';
+    return;
+  }
+
+  document.getElementById('app').innerHTML = renderLayout(user, 'land_list.html', 'Land Details');
+  attachLogoutHandler();
+
+  const content = document.getElementById('pageContent');
+  content.innerHTML = '<p class="text-muted">Loading...</p>';
+
+  const data = await apiGet('get_lands.php?id=' + encodeURIComponent(landId));
+  if (!data.success) {
+    content.innerHTML = `<div class="card">Land not found. <a href="land_list.html" class="btn btn-secondary">Back to list</a></div>`;
+    return;
+  }
+  const land = data.land;
+
+  // Build type-specific info
+  let typeSpecificHtml = '';
+  if (land.type === 'agricultural') {
+    typeSpecificHtml = `
+      <div class="detail-row"><span class="key">Soil Quality</span><span class="val">${SOIL_LABEL[land.soil_quality] || '—'}</span></div>
+      <div class="detail-row"><span class="key">Water Source</span><span class="val">${WATER_LABEL[land.water_source] || '—'}</span></div>
+    `;
+  } else {
+    typeSpecificHtml = `<div class="detail-row"><span class="key">Distance to Center</span><span class="val">${DIST_LABEL[land.distance_to_center] || '—'}</span></div>`;
+  }
+
+  // Utilities
+  const utils = [
+    ['Electricity', land.has_electricity],
+    ['Water',       land.has_water],
+    ['Road',        land.has_road],
+    ['Sewage',      land.has_sewage]
+  ];
+  const utilsHtml = utils.map(([k,v]) =>
+    `<div class="detail-row"><span class="key">${k}</span><span class="val">${parseInt(v) ? '✔ Available' : '✘ Not available'}</span></div>`
+  ).join('');
+
+  // Valuation
+  let valHtml = '';
+  if (land.valuation_amount) {
+    let breakdownHtml = '';
+    try {
+      const v = JSON.parse(land.valuation_breakdown);
+      const locFactors = (v.locationFactors || []).map(f =>
+        `<div class="breakdown-row"><span>${escape(f.label)}</span><span class="mult">× ${f.mult}</span></div>`
+      ).join('');
+      breakdownHtml = `
+        <div class="breakdown">
+          <div class="breakdown-row"><span>Zone rate × Area (${roleLabel(land.zone)})</span><span>${fmt(v.base)}</span></div>
+          <div class="breakdown-row"><span>${roleLabel(land.type)} type</span><span class="mult">× ${v.typeMultiplier}</span></div>
+          <div class="breakdown-row"><span>${escape(ROAD_LABEL[land.road_access] || '')}</span><span class="mult">× ${v.roadMultiplier}</span></div>
+          ${locFactors}
+          <div class="breakdown-row"><span>After all location factors</span><span>${fmt(v.afterLoc)}</span></div>
+          <div class="breakdown-row"><span>Utility bonus (${v.utilityCount} × 5%)</span><span>+ ${fmt(v.utilityAmount)}</span></div>
+          <div class="breakdown-row total"><span>Total Valuation</span><span>${fmt(v.total)}</span></div>
+        </div>
+      `;
+    } catch(e) { /* breakdown not JSON-parsable, skip */ }
+
+    valHtml = `
+      <div class="valuation-box">
+        <div class="label">Official Valuation</div>
+        <div class="value">${fmt(land.valuation_amount)}</div>
+        <div class="note">Valued by ${escape(land.valued_by)} on ${escape(land.valued_on)}</div>
+      </div>
+      ${breakdownHtml}
+    `;
+  } else {
+    valHtml = `<div class="alert alert-info">This land is awaiting official valuation by the Authority.</div>`;
+  }
+
+  // Action button per role
+  let actionBtn = '';
+  if (user.role === 'authority' && land.status === 'pending') {
+    actionBtn = `<a href="valuation.html?id=${land.id}" class="btn btn-primary">Perform Valuation</a>`;
+  }
+  if (user.role === 'buyer' && land.status === 'valued') {
+    actionBtn = `<a href="payment.html?land_id=${land.id}" class="btn btn-success">Proceed to Payment</a>`;
+  }
+  if (user.role === 'buyer' && land.status === 'sold') {
+    actionBtn = `<button class="btn btn-secondary" disabled>Already Sold</button>`;
+  }
+
+  content.innerHTML = `
+    <div class="page-header">
+      <a href="land_list.html" class="btn btn-secondary mb-10">← Back to list</a>
+      <h1>${escape(land.title)}</h1>
+      <p>Plot ${escape(land.plot_number)} · ${escape(land.location)}</p>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <div class="card">
+          <div style="height:180px; background:linear-gradient(135deg,#1e3a5f,#2d5f3f); color:#fff; display:flex; align-items:center; justify-content:center; font-size:64px; border-radius:8px; margin-bottom:15px;">${landIcon(land.type)}</div>
+          <h3 class="section-title">Property Information</h3>
+          <div class="detail-row"><span class="key">Title</span><span class="val">${escape(land.title)}</span></div>
+          <div class="detail-row"><span class="key">Plot Number</span><span class="val">${escape(land.plot_number)}</span></div>
+          <div class="detail-row"><span class="key">Location</span><span class="val">${escape(land.location)}</span></div>
+          <div class="detail-row"><span class="key">Zone</span><span class="val">${roleLabel(land.zone)}</span></div>
+          <div class="detail-row"><span class="key">Type</span><span class="val">${roleLabel(land.type)}</span></div>
+          <div class="detail-row"><span class="key">Area</span><span class="val">${land.area} m²</span></div>
+          <div class="detail-row"><span class="key">Road Access</span><span class="val">${ROAD_LABEL[land.road_access] || '—'}</span></div>
+          ${typeSpecificHtml}
+          <div class="detail-row"><span class="key">Status</span><span class="val"><span class="badge badge-${land.status}">${roleLabel(land.status)}</span></span></div>
+          ${land.description ? `<div class="mt-10"><strong>Description:</strong><br><span class="text-muted">${escape(land.description)}</span></div>` : ''}
+        </div>
+
+        <div class="card">
+          <h3 class="section-title">Utilities</h3>
+          ${utilsHtml}
+        </div>
+
+        <div class="card">
+          <h3 class="section-title">Seller Information</h3>
+          <div class="detail-row"><span class="key">Name</span><span class="val">${escape(land.seller_name || '—')}</span></div>
+          <div class="detail-row"><span class="key">Email</span><span class="val">${escape(land.seller_email || '—')}</span></div>
+          <div class="detail-row"><span class="key">Phone</span><span class="val">${escape(land.seller_phone || '—')}</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h3 class="section-title">Valuation</h3>
+          ${valHtml}
+          ${actionBtn ? `<div class="mt-20 text-center">${actionBtn}</div>` : ''}
+        </div>
+      </div>
+    </div>
+  `;
+})();
+</script>
+
+</body>
+</html>
