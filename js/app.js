@@ -88,35 +88,38 @@ async function requireAuth(allowedRoles) {
 /* ---------------- LAYOUT (sidebar + topbar) ---------------- */
 const NAV = {
   seller: [
-    { page: 'dashboard.html', label: 'Dashboard',  icon: '📊' },
-    { page: 'add_land.html',  label: 'Add Land',   icon: '➕' },
-    { page: 'land_list.html', label: 'My Lands',   icon: '🗺️' },
-    { page: 'reports.html',   label: 'Reports',    icon: '📈' }
+    { page: 'dashboard.html', label: 'Dashboard', icon: 'bi bi-speedometer2' },
+    { page: 'add_land.html',  label: 'Add Land',  icon: 'bi bi-plus-circle' },
+    { page: 'land_list.html', label: 'My Lands',  icon: 'bi bi-map' },
+    { page: 'reports.html',   label: 'Reports',   icon: 'bi bi-graph-up' }
   ],
+
   buyer: [
-    { page: 'dashboard.html', label: 'Dashboard',     icon: '📊' },
-    { page: 'land_list.html', label: 'Browse Lands',  icon: '🔎' },
-    { page: 'payment.html',   label: 'My Purchases',  icon: '💳' }
+    { page: 'dashboard.html', label: 'Dashboard',    icon: 'bi bi-speedometer2' },
+    { page: 'land_list.html', label: 'Browse Lands', icon: 'bi bi-search' },
+    { page: 'payment.html',   label: 'My Purchases', icon: 'bi bi-credit-card' }
   ],
+
   authority: [
-    { page: 'dashboard.html', label: 'Dashboard',          icon: '📊' },
-    { page: 'land_list.html', label: 'All Lands',          icon: '🗺️' },
-    { page: 'valuation.html', label: 'Pending Valuations', icon: '⚖️' },
-    { page: 'reports.html',   label: 'Reports',            icon: '📈' }
+    { page: 'dashboard.html', label: 'Dashboard',          icon: 'bi bi-speedometer2' },
+    { page: 'land_list.html', label: 'All Lands',          icon: 'bi bi-map' },
+    { page: 'valuation.html', label: 'Pending Valuations', icon: 'bi bi-currency-exchange' },
+    { page: 'reports.html',   label: 'Reports',            icon: 'bi bi-graph-up' }
   ],
+
   admin: [
-    { page: 'dashboard.html', label: 'Dashboard',     icon: '📊' },
-    { page: 'users.html',     label: 'Manage Users',  icon: '👥' },
-    { page: 'land_list.html', label: 'All Lands',     icon: '🗺️' },
-    { page: 'payment.html',   label: 'Transactions',  icon: '💳' },
-    { page: 'reports.html',   label: 'Reports',       icon: '📈' }
+    { page: 'dashboard.html', label: 'Dashboard',    icon: 'bi bi-speedometer2' },
+    { page: 'users.html',     label: 'Manage Users', icon: 'bi bi-people' },
+    { page: 'land_list.html', label: 'All Lands',    icon: 'bi bi-map' },
+    { page: 'payment.html',   label: 'Transactions', icon: 'bi bi-credit-card' },
+    { page: 'reports.html',   label: 'Reports',      icon: 'bi bi-graph-up' }
   ]
 };
 
 function renderLayout(user, currentPage, pageTitle) {
   const navItems = (NAV[user.role] || []).map(n => `
     <a href="${n.page}" class="nav-item ${currentPage === n.page ? 'active' : ''}">
-      <span class="nav-icon">${n.icon}</span> ${n.label}
+      <span class="nav-icon"><i class="${n.icon}"></i></span> ${n.label}
     </a>
   `).join('');
 
@@ -124,12 +127,12 @@ function renderLayout(user, currentPage, pageTitle) {
     <div class="app-layout">
       <aside class="sidebar">
         <div class="sidebar-brand">
-          <h2>🏞️ LVMS</h2>
+          <h2>LVMS</h2>
           <p>Land Valuation System</p>
         </div>
         ${navItems}
         <a href="#" class="nav-item" id="logoutBtn" style="margin-top:20px;">
-          <span class="nav-icon">🚪</span> Logout
+          <span class="nav-icon"><i class="bi bi-box-arrow-right"></i></span> Logout
         </a>
       </aside>
       <header class="topbar">

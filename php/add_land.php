@@ -8,6 +8,7 @@ $title       = trim($input['title']        ?? '');
 $plotNumber  = trim($input['plotNumber']   ?? '');
 $location    = trim($input['location']     ?? '');
 $zone        = $input['zone']              ?? '';
+$image       = $input['image']              ?? '';
 $type        = $input['type']              ?? '';
 $area        = floatval($input['area']     ?? 0);
 $roadAccess  = $input['roadAccess']        ?? '';
@@ -54,16 +55,32 @@ if ($type === 'agricultural') {
 
 $sellerId = $_SESSION['user_id'];
 
+$imagePath = null;
+
+// HANDLE IMAGE UPLOAD
+if (isset($_FILES['image']) && $_FILES['image']['error'] == 0) {
+    $imgName = time() . "_" . basename($_FILES['image']['name']);
+    $targetDir = "../uploads/";
+    $targetFile = $targetDir . $imgName;
+
+    if (!is_dir($targetDir)) {
+        mkdir($targetDir, 0777, true);
+    }
+
+    move_uploaded_file($_FILES['image']['tmp_name'], $targetFile);
+    $imagePath = "uploads/" . $imgName;
+}
+
 $stmt = $conn->prepare("INSERT INTO lands
     (seller_id, title, plot_number, location, zone, type, area, road_access,
      distance_to_center, soil_quality, water_source, description,
-     has_electricity, has_water, has_road, has_sewage, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')");
+     has_electricity, has_water, has_road, has_sewage, status,image_path)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending',?)");
 
-$stmt->bind_param("isssssdsssssiiii",
+$stmt->bind_param("isssssdsssssiiiis",
     $sellerId, $title, $plotNumber, $location, $zone, $type, $area, $roadAccess,
     $distance, $soil, $water, $description,
-    $elec, $wat, $road, $sewage);
+    $elec, $wat, $road, $sewage,$imagePath);
 
 if ($stmt->execute()) {
     jsonResponse(['success' => true, 'land_id' => $conn->insert_id]);

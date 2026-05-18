@@ -75,22 +75,14 @@ if ($result->num_rows === 0) {
 }
 
 
-/* ============================================================
-   START SESSION
-   ============================================================ */
+
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
 
-/* ============================================================
-   HELPER FUNCTIONS
-   ============================================================ */
 
-/* ----------------------------------------
-   Send JSON response
----------------------------------------- */
 function jsonResponse($data, $code = 200) {
 
     http_response_code($code);
@@ -103,9 +95,7 @@ function jsonResponse($data, $code = 200) {
 }
 
 
-/* ----------------------------------------
-   Require Login
----------------------------------------- */
+
 function requireLogin() {
 
     if (!isset($_SESSION['user_id'])) {
@@ -118,9 +108,7 @@ function requireLogin() {
 }
 
 
-/* ----------------------------------------
-   Require Specific Role
----------------------------------------- */
+
 function requireRole($role) {
 
     requireLogin();
