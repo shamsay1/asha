@@ -190,7 +190,7 @@ function renderAdminDash(user, stats, lands) {
       <div class="stat-card red"><div class="label">Total Revenue</div><div class="value" style="font-size:20px;">${fmt(stats.revenue || 0)}</div></div>
     </div>
     <div class="detail-grid">
-      <div class="card">
+      <div class="card" style="width: 1050px">
         <h3 class="section-title">Recent Lands</h3>
         ${recent.length === 0 ? '<p class="text-muted">No lands yet.</p>' : `
           <table>
@@ -207,13 +207,7 @@ function renderAdminDash(user, stats, lands) {
           </table>
         `}
       </div>
-      <div class="card">
-        <h3 class="section-title">Quick Actions</h3>
-        <a href="users.html" class="btn btn-primary btn-block mb-10">Manage Users</a>
-        <a href="land_list.html" class="btn btn-secondary btn-block mb-10">View All Lands</a>
-        <a href="payment.html" class="btn btn-secondary btn-block mb-10">View Transactions</a>
-        <a href="reports.html" class="btn btn-secondary btn-block">System Reports</a>
-      </div>
+      
     </div>
   `;
 }

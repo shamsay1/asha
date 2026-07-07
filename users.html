@@ -53,21 +53,40 @@ async function renderUserList() {
         <tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Created</th><th>Action</th></tr>
       </thead>
       <tbody>
-        ${users.map(u => `
-          <tr>
-            <td>${escape(u.name)}</td>
-            <td>${escape(u.email)}</td>
-            <td>${escape(u.phone)}</td>
-            <td><span class="badge badge-${u.role}">${roleLabel(u.role)}</span></td>
-            <td>${escape(u.created_at)}</td>
-            <td>
-              ${parseInt(u.id) === parseInt(currentUser.id)
-                ? '<span class="text-muted" style="font-size:11px;">(you)</span>'
-                : `<button class="btn btn-danger btn-sm" data-delete="${u.id}" data-name="${escape(u.name)}" data-role="${escape(u.role)}" data-email="${escape(u.email)}">Delete</button>`}
-            </td>
-          </tr>
-        `).join('')}
-      </tbody>
+  ${users.map(u => `
+    <tr>
+      <td>${escape(u.name)}</td>
+      <td>${escape(u.email)}</td>
+      <td>${escape(u.phone)}</td>
+      <td><span class="badge badge-${u.role}">${roleLabel(u.role)}</span></td>
+      <td>${escape(u.created_at)}</td>
+      <td>
+        ${parseInt(u.id) === parseInt(currentUser.id)
+          ? '<span class="text-muted" style="font-size:11px;">(admin)</span>'
+          : `
+            <button
+              class="btn btn-primary btn-sm"
+              data-edit="${u.id}"
+              data-name="${escape(u.name)}"
+              data-email="${escape(u.email)}"
+              data-phone="${escape(u.phone)}"
+              data-role="${escape(u.role)}">
+              Edit
+            </button>
+
+            <button
+              class="btn btn-danger btn-sm"
+              data-delete="${u.id}"
+              data-name="${escape(u.name)}"
+              data-role="${escape(u.role)}"
+              data-email="${escape(u.email)}">
+              Delete
+            </button>
+          `}
+      </td>
+    </tr>
+  `).join('')}
+</tbody>
     </table>
   `;
 
@@ -81,8 +100,94 @@ async function renderUserList() {
       });
     });
   });
+  document.querySelectorAll('[data-edit]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    showEditUserModal({
+      id: btn.dataset.edit,
+      name: btn.dataset.name,
+      email: btn.dataset.email,
+      phone: btn.dataset.phone,
+      role: btn.dataset.role
+    });
+  });
+});
 }
 
+function showEditUserModal(user) {
+  document.getElementById('modalLayer').innerHTML = `
+    <div class="modal-backdrop">
+      <div class="modal">
+        <h2>Edit User</h2>
+
+        <form id="editUserForm">
+          <input type="hidden" id="euId" value="${user.id}">
+
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="euName" value="${user.name}" required>
+          </div>
+
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="euEmail" value="${user.email}" required>
+          </div>
+
+          <div class="form-group">
+            <label>Phone</label>
+            <input type="text" id="euPhone" value="${user.phone}" required>
+          </div>
+
+          <div class="form-group">
+            <label>Role</label>
+            <select id="euRole" required>
+              <option value="seller" ${user.role === 'seller' ? 'selected' : ''}>Seller</option>
+              <option value="buyer" ${user.role === 'buyer' ? 'selected' : ''}>Buyer</option>
+              <option value="authority" ${user.role === 'authority' ? 'selected' : ''}>Authority (valuation officer)</option>
+              <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Administrator</option>
+            </select>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" id="editModalClose">
+              Cancel
+            </button>
+
+            <button type="submit" class="btn btn-primary">
+              Update User
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('editModalClose').addEventListener('click', () => {
+    document.getElementById('modalLayer').innerHTML = '';
+  });
+
+  document.getElementById('editUserForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const payload = {
+      action: 'update',
+      id: document.getElementById('euId').value,
+      name: document.getElementById('euName').value.trim(),
+      email: document.getElementById('euEmail').value.trim(),
+      phone: document.getElementById('euPhone').value.trim(),
+      role: document.getElementById('euRole').value
+    };
+
+    const data = await apiPost('manage_users.php', payload);
+
+    if (data.success) {
+      document.getElementById('modalLayer').innerHTML = '';
+      await renderUserList();
+      alert('User updated successfully.');
+    } else {
+      alert(data.message || 'Failed to update user.');
+    }
+  });
+}
 function showAddUserModal() {
   document.getElementById('modalLayer').innerHTML = `
     <div class="modal-backdrop">

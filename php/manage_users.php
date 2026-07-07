@@ -49,7 +49,68 @@ if ($action === 'add') {
         jsonResponse(['success' => false, 'message' => 'Failed to add user: ' . $stmt->error]);
     }
 }
+// UPDATE user
+if ($action === 'update') {
 
+    $id    = intval($input['id'] ?? 0);
+    $name  = trim($input['name'] ?? '');
+    $email = trim(strtolower($input['email'] ?? ''));
+    $phone = trim($input['phone'] ?? '');
+    $role  = trim($input['role'] ?? '');
+
+    if (!$id || !$name || !$email || !$phone || !$role) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'All fields are required.'
+        ]);
+    }
+
+    if (!in_array($role, ['seller', 'buyer', 'authority', 'admin'])) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Invalid role.'
+        ]);
+    }
+
+    // Hakikisha email haitumiki na user mwingine
+    $check = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
+    $check->bind_param("si", $email, $id);
+    $check->execute();
+
+    if ($check->get_result()->num_rows > 0) {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Email already exists.'
+        ]);
+    }
+
+    $stmt = $conn->prepare("
+        UPDATE users
+        SET name = ?, email = ?, phone = ?, role = ?
+        WHERE id = ?
+    ");
+
+    $stmt->bind_param(
+        "ssssi",
+        $name,
+        $email,
+        $phone,
+        $role,
+        $id
+    );
+
+    if ($stmt->execute()) {
+        jsonResponse([
+            'success' => true,
+            'message' => 'User updated successfully.'
+        ]);
+    } else {
+        jsonResponse([
+            'success' => false,
+            'message' => 'Failed to update user: ' . $stmt->error
+        ]);
+    }
+}
 // DELETE user
 if ($action === 'delete') {
     $id = intval($input['id'] ?? 0);

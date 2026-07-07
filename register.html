@@ -46,7 +46,7 @@
 
     </div>
 
-    <div id="alertContainer"></div>
+    <div id="alertContainer" style="color: red"></div>
 
     <form id="registerForm">
 
@@ -131,7 +131,7 @@
                 </label>
 
                 <input type="password"
-                       id="confirmPassword"
+                       id="regConfirmPassword"
                        class="form-control"
                        placeholder="Confirm password"
                        required>
@@ -205,6 +205,12 @@
 <script>
   document.getElementById('registerForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const password = document.getElementById('regPassword').value;
+    const confirmPassword = document.getElementById('regConfirmPassword').value;
+     if (password !== confirmPassword) {
+        alert('Passwords do not match.');
+        return;
+    }
     const alertBox = document.getElementById('alertContainer');
     const payload = {
       name:     document.getElementById('regName').value.trim(),
@@ -215,7 +221,8 @@
     };
     const data = await apiPost('register.php', payload);
     if (data.success) {
-      window.location.href = 'dashboard.html';
+      window.location.href = data.redirect;
+      alert("registration completed");
     } else {
       showAlert(alertBox, 'error', data.message || 'Registration failed.');
     }

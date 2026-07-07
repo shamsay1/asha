@@ -32,23 +32,14 @@ $stmt = $conn->prepare("INSERT INTO users (name, email, password, phone, role) V
 $stmt->bind_param("sssss", $name, $email, $hashed, $phone, $role);
 
 if ($stmt->execute()) {
-    $userId = $conn->insert_id;
-    $_SESSION['user_id'] = $userId;
-    $_SESSION['name']    = $name;
-    $_SESSION['email']   = $email;
-    $_SESSION['role']    = $role;
-
     jsonResponse([
         'success' => true,
-        'user' => [
-            'id'    => $userId,
-            'name'  => $name,
-            'email' => $email,
-            'phone' => $phone,
-            'role'  => $role
-        ]
+        'redirect' => 'index.html'
     ]);
 } else {
-    jsonResponse(['success' => false, 'message' => 'Registration failed: ' . $stmt->error]);
+    jsonResponse([
+        'success' => false,
+        'message' => 'Registration failed: ' . $stmt->error
+    ]);
 }
 ?>
